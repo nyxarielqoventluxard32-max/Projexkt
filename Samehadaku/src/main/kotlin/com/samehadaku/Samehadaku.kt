@@ -41,6 +41,7 @@ class Samehadaku : MainAPI() {
 
         context?.let { StarPopupHelper.showStarPopupIfNeeded(it) }
 
+        // ✅ HANYA EPISODE TERBARU YANG PAKAI Sub Ep X
         if (request.name == "Episode Terbaru") {
             val document = app.get("${request.data}$page").document
 
@@ -57,16 +58,17 @@ class Samehadaku : MainAPI() {
                 val href = fixUrl(a.attr("href"))
                 val poster = fixUrlNull(li.selectFirst("img")?.attr("src"))
 
+                // 🔥 FIX UTAMA: ambil episode dari TEXT <li>, BUKAN dari title <a>
+                val fullText = li.text()
                 val ep = Regex("(Episode|Ep)\\s*(\\d+)", RegexOption.IGNORE_CASE)
-                    .find(rawTitle)
+                    .find(fullText)
                     ?.groupValues
                     ?.getOrNull(2)
                     ?.toIntOrNull()
 
                 newAnimeSearchResponse(title, href, TvType.Anime) {
                     posterUrl = poster
-                    // 🔥 INI KUNCI BADGE "Sub Ep X"
-                    addSub(ep)
+                    addSub(ep) // ← badge Sub Ep X muncul di homepage
                 }
             }
 
@@ -76,6 +78,7 @@ class Samehadaku : MainAPI() {
             )
         }
 
+        // ❌ SECTION LAIN TIDAK PAKAI Sub Ep X
         val document = app.get("$mainUrl/${request.data}$page").document
         val home = document.select("div.animposx").mapNotNull { it.toSearchResult() }
 
