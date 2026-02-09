@@ -1,0 +1,8 @@
+{
+    "name": "ModSanz",
+    "description": "Cloudstream extensions collection",
+    "manifestVersion": 1,
+    "pluginLists": [
+      "https://raw.githubusercontent.com/nyxarielqoventluxard32-max/Projexkt/builds/plugins.json"
+    ]
+}
