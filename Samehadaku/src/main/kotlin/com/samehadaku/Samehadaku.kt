@@ -10,9 +10,11 @@ import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
 class Samehadaku : MainAPI() {
+
     companion object {
         var context: android.content.Context? = null
     }
+
     override var mainUrl = "https://v1.samehadaku.how"
     override var name = "Samehadaku⛩️"
     override var lang = "id"
@@ -36,7 +38,9 @@ class Samehadaku : MainAPI() {
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
+
         context?.let { StarPopupHelper.showStarPopupIfNeeded(it) }
+
         if (request.name == "Episode Terbaru") {
             val document = app.get("${request.data}$page").document
 
@@ -61,7 +65,8 @@ class Samehadaku : MainAPI() {
 
                 newAnimeSearchResponse(title, href, TvType.Anime) {
                     posterUrl = poster
-                    addDubStatus(DubStatus.Subbed, ep)
+                    // 🔥 INI KUNCI BADGE "Sub Ep X"
+                    addSub(ep)
                 }
             }
 
