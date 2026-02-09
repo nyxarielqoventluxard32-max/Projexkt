@@ -1,0 +1,42 @@
+[
+    {
+        "iconUrl": "https://i.postimg.cc/TYKyC16H/images.png",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/nyxarielqoventluxard32-max/Projexkt",
+        "fileSize": 34224,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "horis"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 42,
+        "internalName": "Disney Plus",
+        "description": "Netflix, PrimeVideo, Disney+ Hotstar Contents in Multiple Languages",
+        "url": "https://raw.githubusercontent.com/nyxarielqoventluxard32-max/Projexkt/builds/Disney Plus.cs3",
+        "name": "Disney Plus"
+    },
+    {
+        "iconUrl": "https://github.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/raw/refs/heads/master/MovieBoxProvider/icon.png",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/nyxarielqoventluxard32-max/Projexkt",
+        "fileSize": 58232,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "NivinCNC,Phisher98"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 8,
+        "internalName": "MovieBoxProvider",
+        "description": "Multi Language Movies and Series Provider",
+        "url": "https://raw.githubusercontent.com/nyxarielqoventluxard32-max/Projexkt/builds/MovieBoxProvider.cs3",
+        "name": "MovieBoxProvider"
+    }
+]
