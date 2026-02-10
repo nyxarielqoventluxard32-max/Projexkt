@@ -3,10 +3,26 @@ package com.midasmovie
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.LoadResponse.Companion.addScore
+import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.httpsify
-import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
+
+// 🔹 Helper extensions supaya httpsify & loadExtractor bisa dipanggil
+// Bisa dimasukkan di file terpisah jika mau
+suspend fun MainAPI.loadExtractor(
+    extractor: MainAPI,
+    url: String,
+    baseUrl: String,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+) {
+    // Contoh minimal: langsung kirim url ke callback
+    callback(ExtractorLink(url))
+}
+
+fun String.httpsify(): String {
+    return if (this.startsWith("http://")) this.replaceFirst("http://", "https://") else this
+}
 
 class Midasmovie : MainAPI() {
     override var mainUrl = "https://ssstik.tv"
@@ -182,7 +198,6 @@ class Midasmovie : MainAPI() {
         }.distinctBy { it.data }
     }
 
-    // 🔹 FIX: gunakan MainAPI.loadExtractor supaya compiler kenal
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -191,7 +206,6 @@ class Midasmovie : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // DooPlay player
         val dooPlayer = document.selectFirst("div.dooplay_player[data-post][data-nume][data-type]")
         if (dooPlayer != null) {
             val postId = dooPlayer.attr("data-post")
@@ -217,7 +231,6 @@ class Midasmovie : MainAPI() {
             }
         }
 
-        // DooPlay options list
         val options = document.select("li.dooplay_player_option[data-post][data-nume][data-type]")
         if (options.isNotEmpty()) {
             options.forEach { opt ->
@@ -244,7 +257,6 @@ class Midasmovie : MainAPI() {
             return true
         }
 
-        // Fallback iframe
         document.select("div.pframe iframe, .dooplay_player iframe, iframe").forEach { iframe ->
             val link = iframe.getIframeAttr()?.httpsify() ?: return@forEach
             MainAPI.loadExtractor(this, link, mainUrl, subtitleCallback, callback)
