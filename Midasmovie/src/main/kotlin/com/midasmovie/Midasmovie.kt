@@ -4,6 +4,8 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.LoadResponse.Companion.addScore
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.httpsify
+import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
 class Midasmovie : MainAPI() {
@@ -166,16 +168,10 @@ class Midasmovie : MainAPI() {
             document.select("a[href*=\"episode\"], a[href*=\"/eps\"], a[href*=\"/ep\"], a.episode")
         }
 
-        val episodes = links.mapIndexedNotNull { index, a ->
-            val href = a.attr("href").trim()
-                .takeIf { it.isNotBlank() }
-                ?.let { fixUrl(it) }
-                ?: return@mapIndexedNotNull null
-
+        return links.mapIndexedNotNull { index, a ->
+            val href = a.attr("href").trim().takeIf { it.isNotBlank() }?.let { fixUrl(it) } ?: return@mapIndexedNotNull null
             val name = a.text().trim().ifBlank { "Episode ${index + 1}" }
-
-            val epNum = Regex("E(p|ps)?\\s*(\\d+)", RegexOption.IGNORE_CASE)
-                .find(name)?.groupValues?.getOrNull(2)?.toIntOrNull()
+            val epNum = Regex("E(p|ps)?\\s*(\\d+)", RegexOption.IGNORE_CASE).find(name)?.groupValues?.getOrNull(2)?.toIntOrNull()
                 ?: (index + 1)
 
             newEpisode(href) {
@@ -183,11 +179,10 @@ class Midasmovie : MainAPI() {
                 this.season = 1
                 this.episode = epNum
             }
-        }
-
-        return episodes.distinctBy { it.data }
+        }.distinctBy { it.data }
     }
 
+    // 🔹 FIX: gunakan MainAPI.loadExtractor supaya compiler kenal
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -216,13 +211,13 @@ class Midasmovie : MainAPI() {
 
                 response.select("iframe").forEach { iframe ->
                     val link = iframe.getIframeAttr()?.httpsify() ?: return@forEach
-                    loadExtractor(link, mainUrl, subtitleCallback, callback)
+                    MainAPI.loadExtractor(this, link, mainUrl, subtitleCallback, callback)
                 }
                 return true
             }
         }
 
-        // DooPlay options
+        // DooPlay options list
         val options = document.select("li.dooplay_player_option[data-post][data-nume][data-type]")
         if (options.isNotEmpty()) {
             options.forEach { opt ->
@@ -243,38 +238,16 @@ class Midasmovie : MainAPI() {
 
                 response.select("iframe").forEach { iframe ->
                     val link = iframe.getIframeAttr()?.httpsify() ?: return@forEach
-                    loadExtractor(link, mainUrl, subtitleCallback, callback)
+                    MainAPI.loadExtractor(this, link, mainUrl, subtitleCallback, callback)
                 }
             }
             return true
         }
 
-        // Muvipro fallback
-        val postId = document.selectFirst("div#muvipro_player_content_id")?.attr("data-id")
-        if (!postId.isNullOrBlank()) {
-            document.select("div.tab-content-ajax").forEach { tab ->
-                val tabId = tab.attr("id")
-                if (tabId.isBlank()) return@forEach
-
-                val response = app.post(
-                    "$mainUrl/wp-admin/admin-ajax.php",
-                    data = mapOf(
-                        "action" to "muvipro_player_content",
-                        "tab" to tabId,
-                        "post_id" to postId
-                    )
-                ).document
-
-                val iframe = response.selectFirst("iframe")?.getIframeAttr() ?: return@forEach
-                loadExtractor(iframe.httpsify(), mainUrl, subtitleCallback, callback)
-            }
-            return true
-        }
-
-        // Direct iframe fallback
+        // Fallback iframe
         document.select("div.pframe iframe, .dooplay_player iframe, iframe").forEach { iframe ->
             val link = iframe.getIframeAttr()?.httpsify() ?: return@forEach
-            loadExtractor(link, mainUrl, subtitleCallback, callback)
+            MainAPI.loadExtractor(this, link, mainUrl, subtitleCallback, callback)
         }
 
         return true
@@ -292,9 +265,7 @@ class Midasmovie : MainAPI() {
 
         if (this.hasAttr("srcset")) {
             val srcset = this.attr("srcset").trim()
-            val best = srcset.split(",")
-                .map { it.trim().split(" ")[0] }
-                .lastOrNull()
+            val best = srcset.split(",").map { it.trim().split(" ")[0] }.lastOrNull()
             if (!best.isNullOrBlank()) return best.fixImageQuality()
         }
 
@@ -312,10 +283,5 @@ class Midasmovie : MainAPI() {
     private fun String.fixImageQuality(): String {
         val regex = Regex("-\\d+x\\d+(?=\\.(webp|jpg|jpeg|png))", RegexOption.IGNORE_CASE)
         return this.replace(regex, "")
-    }
-
-    // ✅ Tambahkan ekstensi httpsify
-    private fun String.httpsify(): String {
-        return this.replace("http://", "https://")
     }
 }
