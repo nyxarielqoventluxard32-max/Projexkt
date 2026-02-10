@@ -16,8 +16,12 @@ suspend fun MainAPI.loadExtractor(
         newExtractorLink(
             source = "Default",
             name = "Default",
-            url = url
-        )
+            url = url,
+            type = ExtractorLinkType.VIDEO,
+        ) {
+            // headers bisa ditambahkan kalau perlu
+            this.headers = emptyMap()
+        }
     )
 }
 
@@ -52,7 +56,7 @@ class Midasmovie : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = if (page == 1) "$mainUrl/${request.data.replace("page/%d/", "")}" else "$mainUrl/${request.data.format(page)}"
-        val document = app.get(url.replace("//", "/").replace(":/", "://")).document
+        val document = app.get(url.replace("//", "/").replace(":/", "://"), headers = emptyMap()).document
         val expectedType = if (request.data.contains("tvshows", ignoreCase = true)) TvType.TvSeries else TvType.Movie
         val items = document.select("article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite")
             .mapNotNull { it.toSearchResult(expectedType) }
@@ -60,13 +64,13 @@ class Midasmovie : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
+        val document = app.get("$mainUrl/?s=$query", headers = emptyMap()).document
         return document.select("article, div.ml-item, div.item, div.movie-item, div.film")
             .mapNotNull { it.toSearchOnly() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        val document = app.get(url, headers = emptyMap()).document
         val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")
             ?.text()?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
         val poster = document.selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")
@@ -103,7 +107,8 @@ class Midasmovie : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        val document = app.get(data, headers = emptyMap()).document
+
         val mediaElements = document.select("div.pframe iframe, .dooplay_player iframe, iframe, video, source")
         mediaElements.forEach { element ->
             val link = when {
