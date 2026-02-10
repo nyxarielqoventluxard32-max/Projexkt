@@ -11,7 +11,6 @@ suspend fun MainAPI.loadExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
-    // Gunakan newExtractorLink agar tidak deprecated
     callback(
         newExtractorLink(
             source = url,
@@ -31,7 +30,9 @@ class Midasmovie : MainAPI() {
     override var name = "Midasmovie🏵"
     override val hasMainPage = true
     override var lang = "id"
+
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+
     override val mainPage = mainPageOf(
         "movies/page/%d/" to "Latest Update",
         "tvshows/page/%d/" to "TV Series",
@@ -50,22 +51,27 @@ class Midasmovie : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page == 1) "$mainUrl/${request.data.replace("page/%d/", "")}" else "$mainUrl/${request.data.format(page)}"
+        val url = if (page == 1) "$mainUrl/${request.data.replace("page/%d/", "")}"
+                  else "$mainUrl/${request.data.format(page)}"
         val document = app.get(url.replace("//", "/").replace(":/", "://"), emptyMap()).document
         val expectedType = if (request.data.contains("tvshows", ignoreCase = true)) TvType.TvSeries else TvType.Movie
-        val items = document.select("article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite").mapNotNull { it.toSearchResult(expectedType) }
+        val items = document.select("article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite")
+            .mapNotNull { it.toSearchResult(expectedType) }
         return newHomePageResponse(request.name, items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/?s=$query", emptyMap()).document
-        return document.select("article, div.ml-item, div.item, div.movie-item, div.film").mapNotNull { it.toSearchOnly() }
+        return document.select("article, div.ml-item, div.item, div.movie-item, div.film")
+            .mapNotNull { it.toSearchOnly() }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, emptyMap()).document
-        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")?.text()?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
-        val poster = document.selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")?.fixPoster()?.let { fixUrl(it) }
+        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")
+            ?.text()?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
+        val poster = document.selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")
+            ?.fixPoster()?.let { fixUrl(it) }
         val description = document.selectFirst("div[itemprop=description] > p, .wp-content > p, .entry-content > p, .desc p, .synopsis")?.text()?.trim()
         val tags = document.select("strong:contains(Genre) ~ a, .sgeneros a, .wp-tags a, .genre a, .genres a").eachText()
         val year = document.selectFirst("strong:contains(Year) ~ a, .year, .release")?.text()?.trim()?.replace(Regex("\\D"), "")?.toIntOrNull()
@@ -100,7 +106,6 @@ class Midasmovie : MainAPI() {
     ): Boolean {
         val document = app.get(data, emptyMap()).document
         val options = document.select("li.dooplay_player_option[data-post][data-nume][data-type]")
-
         if (options.isNotEmpty()) {
             options.forEach { opt ->
                 val postId = opt.attr("data-post")
@@ -150,6 +155,7 @@ class Midasmovie : MainAPI() {
         return true
     }
 
+    // Helpers
     private fun Element?.getIframeAttr(): String? {
         if (this == null) return null
         return this.attr("data-litespeed-src").takeIf { it.isNotBlank() }
