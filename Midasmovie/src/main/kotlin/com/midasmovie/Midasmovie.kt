@@ -11,11 +11,12 @@ suspend fun MainAPI.loadExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
+    // Gunakan newExtractorLink agar tidak deprecated
     callback(
-        ExtractorLink(
-            url = url,
-            name = "Default",
+        newExtractorLink(
             source = url,
+            name = "Default",
+            url = url,
             headers = emptyMap()
         )
     )
@@ -52,25 +53,20 @@ class Midasmovie : MainAPI() {
         val url = if (page == 1) "$mainUrl/${request.data.replace("page/%d/", "")}" else "$mainUrl/${request.data.format(page)}"
         val document = app.get(url.replace("//", "/").replace(":/", "://"), emptyMap()).document
         val expectedType = if (request.data.contains("tvshows", ignoreCase = true)) TvType.TvSeries else TvType.Movie
-        val items = document.select("article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite")
-            .mapNotNull { it.toSearchResult(expectedType) }
+        val items = document.select("article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite").mapNotNull { it.toSearchResult(expectedType) }
         return newHomePageResponse(request.name, items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/?s=$query", emptyMap()).document
-        return document.select("article, div.ml-item, div.item, div.movie-item, div.film")
-            .mapNotNull { it.toSearchOnly() }
+        return document.select("article, div.ml-item, div.item, div.movie-item, div.film").mapNotNull { it.toSearchOnly() }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, emptyMap()).document
-        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")
-            ?.text()?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
-        val poster = document.selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")
-            ?.fixPoster()?.let { fixUrl(it) }
-        val description = document.selectFirst("div[itemprop=description] > p, .wp-content > p, .entry-content > p, .desc p, .synopsis")
-            ?.text()?.trim()
+        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")?.text()?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
+        val poster = document.selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")?.fixPoster()?.let { fixUrl(it) }
+        val description = document.selectFirst("div[itemprop=description] > p, .wp-content > p, .entry-content > p, .desc p, .synopsis")?.text()?.trim()
         val tags = document.select("strong:contains(Genre) ~ a, .sgeneros a, .wp-tags a, .genre a, .genres a").eachText()
         val year = document.selectFirst("strong:contains(Year) ~ a, .year, .release")?.text()?.trim()?.replace(Regex("\\D"), "")?.toIntOrNull()
         val rating = document.selectFirst("span[itemprop=ratingValue], .dt_rating_vgs, .rating, .imdb")?.text()?.trim()?.toDoubleOrNull()
@@ -96,9 +92,15 @@ class Midasmovie : MainAPI() {
         }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
         val document = app.get(data, emptyMap()).document
         val options = document.select("li.dooplay_player_option[data-post][data-nume][data-type]")
+
         if (options.isNotEmpty()) {
             options.forEach { opt ->
                 val postId = opt.attr("data-post")
@@ -106,7 +108,8 @@ class Midasmovie : MainAPI() {
                 val type = opt.attr("data-type")
                 if (postId.isBlank() || nume.isBlank() || type.isBlank()) return@forEach
 
-                val response = app.post("$mainUrl/wp-admin/admin-ajax.php",
+                val response = app.post(
+                    "$mainUrl/wp-admin/admin-ajax.php",
                     data = mapOf("action" to "doo_player_ajax", "post" to postId, "nume" to nume, "type" to type),
                     headers = emptyMap()
                 ).document
@@ -194,9 +197,7 @@ class Midasmovie : MainAPI() {
     private fun Element.toSearchResult(expectedType: TvType? = null): SearchResponse? {
         val link = selectFirst("a[href]") ?: return null
         val href = fixUrl(link.attr("href"))
-        val title = link.attr("title").removePrefix("Permalink to:").ifBlank {
-            selectFirst("h1, h2, h3, h4, .title, .movie-title, .entry-title")?.text()?.trim().orEmpty()
-        }.trim()
+        val title = link.attr("title").removePrefix("Permalink to:").ifBlank { selectFirst("h1, h2, h3, h4, .title, .movie-title, .entry-title")?.text()?.trim().orEmpty() }.trim()
         if (title.isBlank()) return null
         val posterUrl = selectFirst("img")?.fixPoster()?.let { fixUrl(it) }
         val quality = selectFirst(".quality, .gmr-quality-item, .gmr-qual, .q")?.text()?.trim()?.replace("-", "")?.takeIf { it.isNotBlank() }
@@ -209,10 +210,7 @@ class Midasmovie : MainAPI() {
         return if (inferredType == TvType.TvSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
         } else {
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = posterUrl
-                if (!quality.isNullOrBlank()) addQuality(quality)
-            }
+            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = posterUrl; if (!quality.isNullOrBlank()) addQuality(quality) }
         }
     }
 
@@ -225,15 +223,9 @@ class Midasmovie : MainAPI() {
         val isMovie = typeText?.contains("movie") == true
         val rating = selectFirst(".meta .rating")?.text()?.trim()?.replace("IMDb", "")?.trim()?.toDoubleOrNull()
         return if (isMovie) {
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = poster
-                if (rating != null) this.score = Score.from10(rating)
-            }
+            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = poster; if (rating != null) this.score = Score.from10(rating) }
         } else {
-            newAnimeSearchResponse(title, href, TvType.TvSeries) {
-                this.posterUrl = poster
-                if (rating != null) this.score = Score.from10(rating)
-            }
+            newAnimeSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = poster; if (rating != null) this.score = Score.from10(rating) }
         }
     }
 
