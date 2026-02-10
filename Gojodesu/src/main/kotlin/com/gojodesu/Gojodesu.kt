@@ -15,7 +15,11 @@ class Gojodesu : MainAPI() {
     override val supportedTypes = setOf(TvType.Anime, TvType.Movie)
 
     override val mainPage = mainPageOf(
-        "" to "Rilisan Terbaru"
+        "$mainUrl/page/" to "Rilisan Terbaru",
+        "$mainUrl/anime/?status=&type=&sub=&order=latest&page=" to "Latest Anime",
+        "$mainUrl/anime/?status=&type=&sub=&order=latest&page=" to "View All",
+        "$mainUrl/anime/?status=completed&page=" to "Completed",
+        "$mainUrl/anime/?status=ongoing&page=" to "Ongoing"
     )
 
     private fun getPoster(el: Element?): String? {
@@ -53,17 +57,25 @@ class Gojodesu : MainAPI() {
         val a = element.selectFirst("a[href]") ?: return null
         val link = fixUrlNull(a.attr("href")) ?: return null
         val titleRaw = a.attr("title").ifBlank {
-            element.selectFirst(".tt, h2, h3")?.text().orEmpty()
+            element.selectFirst(".tt, h2, h3, .eggtitle")?.text().orEmpty()
         }.trim()
         val title = titleRaw.replace(Regex("""\sEpisode\s\d+"""), "")
         val poster = getUniquePoster(element, link)
-        return newAnimeSearchResponse(title, link, TvType.Anime) {
-            this.posterUrl = poster
+        val isMovie = element.selectFirst(".typez")?.text()?.contains("Movie", true) == true
+
+        return if (isMovie) {
+            newMovieSearchResponse(title, link, TvType.Movie) {
+                this.posterUrl = poster
+            }
+        } else {
+            newAnimeSearchResponse(title, link, TvType.Anime) {
+                this.posterUrl = poster
+            }
         }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = "$mainUrl/page/$page/"
+        val url = request.data + page
         val doc = app.get(url).document
         val items = doc.select("div.listupd article.bs, div.listupd div.bsx")
             .distinctBy { it.selectFirst("a")?.attr("href") }
@@ -93,6 +105,7 @@ class Gojodesu : MainAPI() {
             ?: getSlidePoster(doc)
         val description = doc.selectFirst("div.entry-content p, div.desc p, div.synopsis p")?.text()?.trim()
         val isMovie = doc.selectFirst(".spe, .status")?.text()?.contains("Movie", true) == true
+
         val episodeSelectors = listOf(
             "div.eplister ul li",
             "div.episodelist ul li",
@@ -140,6 +153,7 @@ class Gojodesu : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
         val links = mutableListOf<String>()
+
         doc.select(".mobius option, select option, .mirror option").forEach {
             val value = it.attr("value")
             val decoded = decodeBase64(value)
@@ -148,10 +162,12 @@ class Gojodesu : MainAPI() {
             } else null
             if (!src.isNullOrBlank()) links.add(fixUrl(src))
         }
+
         doc.select("iframe").forEach {
             val src = it.attr("src")
             if (src.isNotBlank()) links.add(fixUrl(src))
         }
+
         links.distinct().forEach { loadExtractor(it, subtitleCallback, callback) }
         return links.isNotEmpty()
     }
