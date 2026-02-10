@@ -1,12 +1,13 @@
-package com.sflix
 
+package com.gojodesu
+
+import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
-import android.content.Context
 
 @CloudstreamPlugin
-class SflixPlugin : Plugin() {
+class GojodesuPlugin : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(Sflix())
+        registerMainAPI(Gojodesu())
     }
 }
