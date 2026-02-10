@@ -1,5 +1,7 @@
 package com.midasmovie
 
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
@@ -38,7 +40,7 @@ class PlayCinematic : ExtractorApi() {
             generateM3u8(
                 name,
                 location,
-                referer = url,   // ✅
+                referer = url,
                 headers = headers
             ).forEach(callback)
         } else {
@@ -49,7 +51,7 @@ class PlayCinematic : ExtractorApi() {
                     url = location,
                     type = ExtractorLinkType.VIDEO
                 ) {
-                    this.referer = url   // ✅
+                    this.referer = url
                     this.headers = headers
                     this.quality = parseQuality(location)
                 }
@@ -68,17 +70,27 @@ class PlayCinematic : ExtractorApi() {
             val data = script.data()
             if (data.contains("eval(function(p,a,c,k,e,d)")) {
                 val unpacked = getAndUnpack(data)
-                val match = Regex("\"tracks\"\\s*:\\s*\\[(.*?)]", RegexOption.DOT_MATCHES_ALL)
-                    .find(unpacked)?.groupValues?.get(1) ?: return
+
+                val match = Regex(
+                    "\"tracks\"\\s*:\\s*\\[(.*?)]",
+                    RegexOption.DOT_MATCHES_ALL
+                ).find(unpacked)?.groupValues?.get(1) ?: return
 
                 val json = "[$match]"
-                val tracks = tryParseJson<List<Tracks>>(json) ?: return
 
-                tracks.forEach {
+                val type = object : TypeToken<List<Tracks>>() {}.type
+                val tracks: List<Tracks> =
+                    try {
+                        Gson().fromJson(json, type)
+                    } catch (e: Exception) {
+                        return
+                    }
+
+                tracks.forEach { track ->
                     subtitleCallback(
                         SubtitleFile(
-                            getLanguage(it.label),
-                            toAbsoluteUrl(mainUrl, it.file)
+                            getLanguage(track.label),
+                            toAbsoluteUrl(mainUrl, track.file)
                         )
                     )
                 }
@@ -88,14 +100,15 @@ class PlayCinematic : ExtractorApi() {
 
     private fun parseQuality(url: String): Int {
         val match = Regex("(\\d{3,4})p").find(url)
-        return match?.groupValues?.get(1)?.toIntOrNull() ?: Qualities.Unknown.value
+        return match?.groupValues?.get(1)?.toIntOrNull()
+            ?: Qualities.Unknown.value
     }
 
     private fun getLanguage(str: String?): String {
         val s = str?.lowercase(Locale.ROOT) ?: return "Unknown"
         return when {
-            "indo" in s || "bahasa" in s || s == "id" -> "Indonesian"
-            "eng" in s || "english" in s || s == "en" -> "English"
+            "indo" in s || s == "id" -> "Indonesian"
+            "eng" in s || s == "en" -> "English"
             else -> str
         }
     }
