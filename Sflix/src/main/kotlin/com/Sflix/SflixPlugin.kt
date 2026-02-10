@@ -1,13 +1,12 @@
-package com.midasmovie
+package com.sflix
 
-import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
+import android.content.Context
 
 @CloudstreamPlugin
-class MidasmoviePlugin : Plugin() {
+class SflixPlugin : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(Midasmovie())
-        registerExtractorAPI(PlayCinematic())
+        registerMainAPI(Sflix())
     }
 }
