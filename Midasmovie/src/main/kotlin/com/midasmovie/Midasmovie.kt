@@ -17,11 +17,8 @@ suspend fun MainAPI.loadExtractor(
             source = "Default",
             name = "Default",
             url = url,
-            type = ExtractorLinkType.VIDEO,
-        ) {
-            // headers bisa ditambahkan kalau perlu
-            this.headers = emptyMap()
-        }
+            type = ExtractorLinkType.VIDEO
+        ) { headers = emptyMap() }
     )
 }
 
@@ -34,7 +31,6 @@ class Midasmovie : MainAPI() {
     override var name = "Midasmovie🏵"
     override val hasMainPage = true
     override var lang = "id"
-
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
@@ -109,6 +105,7 @@ class Midasmovie : MainAPI() {
     ): Boolean {
         val document = app.get(data, headers = emptyMap()).document
 
+        // Semua iframe/video/source
         val mediaElements = document.select("div.pframe iframe, .dooplay_player iframe, iframe, video, source")
         mediaElements.forEach { element ->
             val link = when {
@@ -120,6 +117,7 @@ class Midasmovie : MainAPI() {
             link?.let { loadExtractor(it, subtitleCallback, callback) }
         }
 
+        // Subtitles
         document.select("track[kind=subtitles]").forEach { track ->
             val subUrl = track.attr("src")?.httpsify()
             if (!subUrl.isNullOrBlank()) subtitleCallback(SubtitleFile(subUrl))
