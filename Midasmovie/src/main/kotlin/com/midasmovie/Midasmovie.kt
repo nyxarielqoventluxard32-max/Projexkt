@@ -11,7 +11,7 @@ suspend fun MainAPI.loadExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
-    callback(ExtractorLink(url, "Default", url))
+    callback(newExtractorLink(source = url, name = "Default", url = url, headers = emptyMap()))
 }
 
 fun String.httpsify(): String {
@@ -23,9 +23,7 @@ class Midasmovie : MainAPI() {
     override var name = "Midasmovie🏵"
     override val hasMainPage = true
     override var lang = "id"
-
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-
     override val mainPage = mainPageOf(
         "movies/page/%d/" to "Latest Update",
         "tvshows/page/%d/" to "TV Series",
