@@ -9,7 +9,6 @@ import java.util.*
 
 suspend fun MainAPI.loadExtractor(
     url: String,
-    baseUrl: String,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
@@ -17,8 +16,7 @@ suspend fun MainAPI.loadExtractor(
         newExtractorLink(
             source = "Default",
             name = "Default",
-            url = url,
-            headers = emptyMap()
+            url = url
         )
     )
 }
@@ -32,6 +30,7 @@ class Midasmovie : MainAPI() {
     override var name = "Midasmovie🏵"
     override val hasMainPage = true
     override var lang = "id"
+
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
@@ -53,7 +52,7 @@ class Midasmovie : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = if (page == 1) "$mainUrl/${request.data.replace("page/%d/", "")}" else "$mainUrl/${request.data.format(page)}"
-        val document = app.get(url.replace("//", "/").replace(":/", "://"), headers = emptyMap<String, String>()).document
+        val document = app.get(url.replace("//", "/").replace(":/", "://")).document
         val expectedType = if (request.data.contains("tvshows", ignoreCase = true)) TvType.TvSeries else TvType.Movie
         val items = document.select("article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite")
             .mapNotNull { it.toSearchResult(expectedType) }
@@ -61,15 +60,15 @@ class Midasmovie : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query", headers = emptyMap<String, String>()).document
+        val document = app.get("$mainUrl/?s=$query").document
         return document.select("article, div.ml-item, div.item, div.movie-item, div.film")
             .mapNotNull { it.toSearchOnly() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, headers = emptyMap<String, String>()).document
-        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")?.text()
-            ?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
+        val document = app.get(url).document
+        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")
+            ?.text()?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
         val poster = document.selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")
             ?.fixPoster()?.let { fixUrl(it) }
         val description = document.selectFirst("div[itemprop=description] > p, .wp-content > p, .entry-content > p, .desc p, .synopsis")?.text()?.trim()
@@ -98,56 +97,33 @@ class Midasmovie : MainAPI() {
         }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        val document = app.get(data, headers = emptyMap<String, String>()).document
-        val options = document.select("li.dooplay_player_option[data-post][data-nume][data-type]")
-        if (options.isNotEmpty()) {
-            options.forEach { opt ->
-                val postId = opt.attr("data-post")
-                val nume = opt.attr("data-nume")
-                val type = opt.attr("data-type")
-                if (postId.isBlank() || nume.isBlank() || type.isBlank()) return@forEach
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val document = app.get(data).document
 
-                val response = app.post(
-                    "$mainUrl/wp-admin/admin-ajax.php",
-                    data = mapOf("action" to "doo_player_ajax", "post" to postId, "nume" to nume, "type" to type),
-                    headers = emptyMap<String, String>()
-                ).document
-
-                response.select("iframe, video, source").forEach { element ->
-                    val link = when {
-                        element.tagName() == "iframe" -> element.getIframeAttr()?.httpsify()
-                        element.tagName() == "source" -> element.attr("src").httpsify()
-                        element.tagName() == "video" -> element.attr("src").httpsify()
-                        else -> null
-                    }
-                    link?.let { loadExtractor(it, mainUrl, subtitleCallback, callback) }
-                }
-
-                response.select("track[kind=subtitles]").forEach { track ->
-                    val subUrl = track.attr("src")?.httpsify()
-                    if (!subUrl.isNullOrBlank()) subtitleCallback(SubtitleFile(subUrl))
-                }
-            }
-            return true
-        }
-
-        document.select("div.pframe iframe, .dooplay_player iframe, iframe, video, source").forEach { element ->
+        // Semua iframe/video/source
+        val mediaElements = document.select("div.pframe iframe, .dooplay_player iframe, iframe, video, source")
+        mediaElements.forEach { element ->
             val link = when {
                 element.tagName() == "iframe" -> element.getIframeAttr()?.httpsify()
                 element.tagName() == "source" -> element.attr("src").httpsify()
                 element.tagName() == "video" -> element.attr("src").httpsify()
                 else -> null
             }
-            link?.let { loadExtractor(it, mainUrl, subtitleCallback, callback) }
+            link?.let { loadExtractor(it, subtitleCallback, callback) }
         }
 
+        // Subtitles
         document.select("track[kind=subtitles]").forEach { track ->
             val subUrl = track.attr("src")?.httpsify()
             if (!subUrl.isNullOrBlank()) subtitleCallback(SubtitleFile(subUrl))
         }
 
-        return true
+        return mediaElements.isNotEmpty()
     }
 
     private fun Element?.getIframeAttr(): String? {
