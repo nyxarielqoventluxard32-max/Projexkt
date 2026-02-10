@@ -1,7 +1,6 @@
 package com.midasmovie
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addScore
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import org.jsoup.nodes.Element
 import java.util.*
@@ -12,7 +11,8 @@ suspend fun MainAPI.loadExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
-    callback(newExtractorLink(source = url, name = "Default", url = url, headers = emptyMap()))
+    // Fix: tambah <String, String> supaya type parameter jelas
+    callback(newExtractorLink<String, String>(source = url, name = "Default", url = url, headers = emptyMap()))
 }
 
 fun String.httpsify(): String {
@@ -103,6 +103,7 @@ class Midasmovie : MainAPI() {
             .selectFirst("span[itemprop=ratingValue], .dt_rating_vgs, .rating, .imdb")
             ?.text()
             ?.trim()
+            ?.toDoubleOrNull()
 
         val episodes = parseEpisodes(document)
         val tvType = if (episodes.isNotEmpty()) TvType.TvSeries else TvType.Movie
@@ -113,7 +114,7 @@ class Midasmovie : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.year = year
-                if (!rating.isNullOrBlank()) addScore(this, rating, 10)
+                rating?.let { addScore(Score.from10(it)) } // fix addScore
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -121,7 +122,7 @@ class Midasmovie : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.year = year
-                if (!rating.isNullOrBlank()) addScore(this, rating, 10)
+                rating?.let { addScore(Score.from10(it)) } // fix addScore
             }
         }
     }
@@ -150,7 +151,7 @@ class Midasmovie : MainAPI() {
                         "nume" to nume,
                         "type" to type
                     ),
-                    headers = emptyMap()
+                    headers = emptyMap() // fix headers
                 ).document
 
                 response.select("iframe, video, source").forEach { element ->
