@@ -11,8 +11,7 @@ suspend fun MainAPI.loadExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
-    // Fix: tambah <String, String> supaya type parameter jelas
-    callback(newExtractorLink<String, String>(source = url, name = "Default", url = url, headers = emptyMap()))
+    callback(ExtractorLink(url, "Default", url))
 }
 
 fun String.httpsify(): String {
@@ -45,66 +44,26 @@ class Midasmovie : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page == 1) {
-            "$mainUrl/${request.data.replace("page/%d/", "")}"
-        } else {
-            "$mainUrl/${request.data.format(page)}"
-        }.replace("//", "/").replace(":/", "://")
-
-        val document = app.get(url, emptyMap()).document
-        val expectedType =
-            if (request.data.contains("tvshows", ignoreCase = true)) TvType.TvSeries else TvType.Movie
-
-        val items = document.select(
-            "article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite"
-        ).mapNotNull { it.toSearchResult(expectedType) }
-
+        val url = if (page == 1) "$mainUrl/${request.data.replace("page/%d/", "")}" else "$mainUrl/${request.data.format(page)}"
+        val document = app.get(url.replace("//", "/").replace(":/", "://"), emptyMap()).document
+        val expectedType = if (request.data.contains("tvshows", ignoreCase = true)) TvType.TvSeries else TvType.Movie
+        val items = document.select("article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite").mapNotNull { it.toSearchResult(expectedType) }
         return newHomePageResponse(request.name, items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/?s=$query", emptyMap()).document
-        return document.select("article, div.ml-item, div.item, div.movie-item, div.film")
-            .mapNotNull { it.toSearchOnly() }
+        return document.select("article, div.ml-item, div.item, div.movie-item, div.film").mapNotNull { it.toSearchOnly() }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, emptyMap()).document
-
-        val title = document
-            .selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")
-            ?.text()
-            ?.substringBefore("Season")
-            ?.substringBefore("Episode")
-            ?.substringBefore("(")
-            ?.trim()
-            .orEmpty()
-
-        val poster = document
-            .selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")
-            ?.fixPoster()
-            ?.let { fixUrl(it) }
-
-        val description = document
-            .selectFirst("div[itemprop=description] > p, .wp-content > p, .entry-content > p, .desc p, .synopsis")
-            ?.text()
-            ?.trim()
-
+        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")?.text()?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
+        val poster = document.selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")?.fixPoster()?.let { fixUrl(it) }
+        val description = document.selectFirst("div[itemprop=description] > p, .wp-content > p, .entry-content > p, .desc p, .synopsis")?.text()?.trim()
         val tags = document.select("strong:contains(Genre) ~ a, .sgeneros a, .wp-tags a, .genre a, .genres a").eachText()
-
-        val year = document
-            .selectFirst("strong:contains(Year) ~ a, .year, .release")
-            ?.text()
-            ?.trim()
-            ?.replace(Regex("\\D"), "")
-            ?.toIntOrNull()
-
-        val rating = document
-            .selectFirst("span[itemprop=ratingValue], .dt_rating_vgs, .rating, .imdb")
-            ?.text()
-            ?.trim()
-            ?.toDoubleOrNull()
-
+        val year = document.selectFirst("strong:contains(Year) ~ a, .year, .release")?.text()?.trim()?.replace(Regex("\\D"), "")?.toIntOrNull()
+        val rating = document.selectFirst("span[itemprop=ratingValue], .dt_rating_vgs, .rating, .imdb")?.text()?.trim()?.toDoubleOrNull()
         val episodes = parseEpisodes(document)
         val tvType = if (episodes.isNotEmpty()) TvType.TvSeries else TvType.Movie
 
@@ -114,7 +73,7 @@ class Midasmovie : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.year = year
-                rating?.let { addScore(Score.from10(it)) } // fix addScore
+                rating?.let { this.score = Score.from10(it) }
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -122,19 +81,13 @@ class Midasmovie : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.year = year
-                rating?.let { addScore(Score.from10(it)) } // fix addScore
+                rating?.let { this.score = Score.from10(it) }
             }
         }
     }
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
+    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data, emptyMap()).document
-
         val options = document.select("li.dooplay_player_option[data-post][data-nume][data-type]")
         if (options.isNotEmpty()) {
             options.forEach { opt ->
@@ -143,16 +96,7 @@ class Midasmovie : MainAPI() {
                 val type = opt.attr("data-type")
                 if (postId.isBlank() || nume.isBlank() || type.isBlank()) return@forEach
 
-                val response = app.post(
-                    "$mainUrl/wp-admin/admin-ajax.php",
-                    data = mapOf(
-                        "action" to "doo_player_ajax",
-                        "post" to postId,
-                        "nume" to nume,
-                        "type" to type
-                    ),
-                    headers = emptyMap() // fix headers
-                ).document
+                val response = app.post("$mainUrl/wp-admin/admin-ajax.php", data = mapOf("action" to "doo_player_ajax", "post" to postId, "nume" to nume, "type" to type), headers = emptyMap()).document
 
                 response.select("iframe, video, source").forEach { element ->
                     val link = when {
@@ -192,9 +136,7 @@ class Midasmovie : MainAPI() {
 
     private fun Element?.getIframeAttr(): String? {
         if (this == null) return null
-        return this.attr("data-litespeed-src").takeIf { it.isNotBlank() }
-            ?: this.attr("data-src").takeIf { it.isNotBlank() }
-            ?: this.attr("src")
+        return this.attr("data-litespeed-src").takeIf { it.isNotBlank() } ?: this.attr("data-src").takeIf { it.isNotBlank() } ?: this.attr("src")
     }
 
     private fun Element?.fixPoster(): String? {
@@ -220,21 +162,12 @@ class Midasmovie : MainAPI() {
     }
 
     private fun parseEpisodes(document: org.jsoup.nodes.Document): List<Episode> {
-        val containers = document.select(
-            "div.episode-list, div.episodes, ul.episodes, div#episodes, div.eplister, div.seasons"
-        )
-        val links = if (containers.isNotEmpty()) {
-            containers.select("a[href]")
-        } else {
-            document.select("a[href*=\"episode\"], a[href*=\"/eps\"], a[href*=\"/ep\"], a.episode")
-        }
-
+        val containers = document.select("div.episode-list, div.episodes, ul.episodes, div#episodes, div.eplister, div.seasons")
+        val links = if (containers.isNotEmpty()) containers.select("a[href]") else document.select("a[href*=\"episode\"], a[href*=\"/eps\"], a[href*=\"/ep\"], a.episode")
         return links.mapIndexedNotNull { index, a ->
             val href = a.attr("href").trim().takeIf { it.isNotBlank() }?.let { fixUrl(it) } ?: return@mapIndexedNotNull null
             val name = a.text().trim().ifBlank { "Episode ${index + 1}" }
-            val epNum = Regex("E(p|ps)?\\s*(\\d+)", RegexOption.IGNORE_CASE).find(name)?.groupValues?.getOrNull(2)?.toIntOrNull()
-                ?: (index + 1)
-
+            val epNum = Regex("E(p|ps)?\\s*(\\d+)", RegexOption.IGNORE_CASE).find(name)?.groupValues?.getOrNull(2)?.toIntOrNull() ?: (index + 1)
             newEpisode(href) {
                 this.name = name
                 this.season = 1
@@ -246,32 +179,20 @@ class Midasmovie : MainAPI() {
     private fun Element.toSearchResult(expectedType: TvType? = null): SearchResponse? {
         val link = selectFirst("a[href]") ?: return null
         val href = fixUrl(link.attr("href"))
-        val title = link.attr("title")
-            .removePrefix("Permalink to:")
-            .ifBlank {
-                selectFirst("h1, h2, h3, h4, .title, .movie-title, .entry-title")?.text()?.trim().orEmpty()
-            }.trim()
+        val title = link.attr("title").removePrefix("Permalink to:").ifBlank { selectFirst("h1, h2, h3, h4, .title, .movie-title, .entry-title")?.text()?.trim().orEmpty() }.trim()
         if (title.isBlank()) return null
-
         val posterUrl = selectFirst("img")?.fixPoster()?.let { fixUrl(it) }
         val quality = selectFirst(".quality, .gmr-quality-item, .gmr-qual, .q")?.text()?.trim()?.replace("-", "")?.takeIf { it.isNotBlank() }
-        val inferredType =
-            expectedType ?: when {
-                href.contains("/tvshow", ignoreCase = true) -> TvType.TvSeries
-                href.contains("/tvshows", ignoreCase = true) -> TvType.TvSeries
-                selectFirst(".type-tv, .tv, .series") != null -> TvType.TvSeries
-                else -> TvType.Movie
-            }
-
+        val inferredType = expectedType ?: when {
+            href.contains("/tvshow", ignoreCase = true) -> TvType.TvSeries
+            href.contains("/tvshows", ignoreCase = true) -> TvType.TvSeries
+            selectFirst(".type-tv, .tv, .series") != null -> TvType.TvSeries
+            else -> TvType.Movie
+        }
         return if (inferredType == TvType.TvSeries) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
-                this.posterUrl = posterUrl
-            }
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
         } else {
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = posterUrl
-                if (!quality.isNullOrBlank()) addQuality(quality)
-            }
+            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = posterUrl; if (!quality.isNullOrBlank()) addQuality(quality) }
         }
     }
 
