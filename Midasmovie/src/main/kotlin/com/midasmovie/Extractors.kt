@@ -1,14 +1,10 @@
 package com.midasmovie
 
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.USER_AGENT
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.utils.ExtractorApi
-import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.newExtractorLink
+import org.jsoup.nodes.Document
+import java.util.*
 
 class PlayCinematic : ExtractorApi() {
     override val name = "PlayCinematic"
@@ -21,36 +17,28 @@ class PlayCinematic : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val headers = mapOf("User-Agent" to USER_AGENT)
-        val videoId = when {
-            url.contains("/video/") -> url.substringAfter("/video/").substringBefore("/")
-            url.contains("/stream/k/") -> url.substringAfter("/stream/k/").substringBefore("/")
-            else -> null
-        }
+        val headers = mapOf(
+            "User-Agent" to USER_AGENT,
+            "Accept" to "*/*"
+        )
 
-        val streamUrl = when {
-            url.contains("/stream/k/") -> url
-            !videoId.isNullOrBlank() -> "$mainUrl/stream/k/$videoId"
-            else -> return
-        }
+        val id = url.substringAfterLast("/")
+        val streamUrl = "$mainUrl/stream/k/$id"
 
-        // ambil redirect ke file asli (mp4/m3u8)
         val resp = app.get(
             streamUrl,
-            referer = referer ?: mainUrl,
+            referer = url,
             headers = headers,
             allowRedirects = false
         )
 
-        val location = resp.headers["Location"] ?: resp.headers["location"] ?: return
-        val isM3u8 = location.contains(".m3u8", ignoreCase = true)
-        val quality = parseQuality(location)
+        val location = resp.headers["Location"] ?: return
 
-        if (isM3u8) {
+        if (location.contains(".m3u8")) {
             generateM3u8(
                 name,
                 location,
-                referer = mainUrl,
+                referer = url,   // ✅
                 headers = headers
             ).forEach(callback)
         } else {
@@ -61,16 +49,63 @@ class PlayCinematic : ExtractorApi() {
                     url = location,
                     type = ExtractorLinkType.VIDEO
                 ) {
-                    this.referer = mainUrl
-                    this.quality = quality
+                    this.referer = url   // ✅
                     this.headers = headers
+                    this.quality = parseQuality(location)
                 }
             )
+        }
+
+        val doc = app.get(url, headers = headers).document
+        extractSubtitles(doc, subtitleCallback)
+    }
+
+    private fun extractSubtitles(
+        document: Document,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        document.select("script").forEach { script ->
+            val data = script.data()
+            if (data.contains("eval(function(p,a,c,k,e,d)")) {
+                val unpacked = getAndUnpack(data)
+                val match = Regex("\"tracks\"\\s*:\\s*\\[(.*?)]", RegexOption.DOT_MATCHES_ALL)
+                    .find(unpacked)?.groupValues?.get(1) ?: return
+
+                val json = "[$match]"
+                val tracks = tryParseJson<List<Tracks>>(json) ?: return
+
+                tracks.forEach {
+                    subtitleCallback(
+                        SubtitleFile(
+                            getLanguage(it.label),
+                            toAbsoluteUrl(mainUrl, it.file)
+                        )
+                    )
+                }
+            }
         }
     }
 
     private fun parseQuality(url: String): Int {
-        val match = Regex("(\\d{3,4})p", RegexOption.IGNORE_CASE).find(url)
-        return match?.groupValues?.getOrNull(1)?.toIntOrNull() ?: Qualities.Unknown.value
+        val match = Regex("(\\d{3,4})p").find(url)
+        return match?.groupValues?.get(1)?.toIntOrNull() ?: Qualities.Unknown.value
+    }
+
+    private fun getLanguage(str: String?): String {
+        val s = str?.lowercase(Locale.ROOT) ?: return "Unknown"
+        return when {
+            "indo" in s || "bahasa" in s || s == "id" -> "Indonesian"
+            "eng" in s || "english" in s || s == "en" -> "English"
+            else -> str
+        }
+    }
+
+    private fun toAbsoluteUrl(base: String, path: String): String {
+        return if (path.startsWith("http")) path else base + path
     }
 }
+
+data class Tracks(
+    val file: String,
+    val label: String
+)
