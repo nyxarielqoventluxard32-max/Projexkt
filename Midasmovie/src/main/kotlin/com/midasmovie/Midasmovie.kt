@@ -8,16 +8,13 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import org.jsoup.nodes.Element
 
 // 🔹 Helper extensions supaya httpsify & loadExtractor bisa dipanggil
-// Bisa dimasukkan di file terpisah jika mau
 suspend fun MainAPI.loadExtractor(
-    extractor: MainAPI,
     url: String,
     baseUrl: String,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
-    // Contoh minimal: langsung kirim url ke callback
-    callback(ExtractorLink(url))
+    callback(newExtractorLink(source = url, name = "Default", url = url))
 }
 
 fun String.httpsify(): String {
@@ -80,7 +77,6 @@ class Midasmovie : MainAPI() {
                     .orEmpty()
             }
             .trim()
-
         if (title.isBlank()) return null
 
         val posterUrl = selectFirst("img")?.fixPoster()?.let { fixUrl(it) }
@@ -206,31 +202,7 @@ class Midasmovie : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        val dooPlayer = document.selectFirst("div.dooplay_player[data-post][data-nume][data-type]")
-        if (dooPlayer != null) {
-            val postId = dooPlayer.attr("data-post")
-            val nume = dooPlayer.attr("data-nume")
-            val type = dooPlayer.attr("data-type")
-
-            if (postId.isNotBlank() && nume.isNotBlank() && type.isNotBlank()) {
-                val response = app.post(
-                    "$mainUrl/wp-admin/admin-ajax.php",
-                    data = mapOf(
-                        "action" to "doo_player_ajax",
-                        "post" to postId,
-                        "nume" to nume,
-                        "type" to type
-                    )
-                ).document
-
-                response.select("iframe").forEach { iframe ->
-                    val link = iframe.getIframeAttr()?.httpsify() ?: return@forEach
-                    MainAPI.loadExtractor(this, link, mainUrl, subtitleCallback, callback)
-                }
-                return true
-            }
-        }
-
+        // 1️⃣ Ambil semua opsi player DooPlay
         val options = document.select("li.dooplay_player_option[data-post][data-nume][data-type]")
         if (options.isNotEmpty()) {
             options.forEach { opt ->
@@ -249,22 +221,44 @@ class Midasmovie : MainAPI() {
                     )
                 ).document
 
-                response.select("iframe").forEach { iframe ->
-                    val link = iframe.getIframeAttr()?.httpsify() ?: return@forEach
-                    MainAPI.loadExtractor(this, link, mainUrl, subtitleCallback, callback)
+                response.select("iframe, video, source").forEach { element ->
+                    val link = when {
+                        element.tagName() == "iframe" -> element.getIframeAttr()?.httpsify()
+                        element.tagName() == "source" -> element.attr("src").httpsify()
+                        element.tagName() == "video" -> element.attr("src").httpsify()
+                        else -> null
+                    }
+                    link?.let { loadExtractor(it, mainUrl, subtitleCallback, callback) }
+                }
+
+                response.select("track[kind=subtitles]").forEach { track ->
+                    val subUrl = track.attr("src")?.httpsify()
+                    if (!subUrl.isNullOrBlank()) subtitleCallback(SubtitleFile(subUrl))
                 }
             }
             return true
         }
 
-        document.select("div.pframe iframe, .dooplay_player iframe, iframe").forEach { iframe ->
-            val link = iframe.getIframeAttr()?.httpsify() ?: return@forEach
-            MainAPI.loadExtractor(this, link, mainUrl, subtitleCallback, callback)
+        // 2️⃣ Fallback: iframe / video langsung halaman
+        document.select("div.pframe iframe, .dooplay_player iframe, iframe, video, source").forEach { element ->
+            val link = when {
+                element.tagName() == "iframe" -> element.getIframeAttr()?.httpsify()
+                element.tagName() == "source" -> element.attr("src").httpsify()
+                element.tagName() == "video" -> element.attr("src").httpsify()
+                else -> null
+            }
+            link?.let { loadExtractor(it, mainUrl, subtitleCallback, callback) }
+        }
+
+        document.select("track[kind=subtitles]").forEach { track ->
+            val subUrl = track.attr("src")?.httpsify()
+            if (!subUrl.isNullOrBlank()) subtitleCallback(SubtitleFile(subUrl))
         }
 
         return true
     }
 
+    // Helper ambil src iframe
     private fun Element?.getIframeAttr(): String? {
         if (this == null) return null
         return this.attr("data-litespeed-src").takeIf { it.isNotBlank() }
