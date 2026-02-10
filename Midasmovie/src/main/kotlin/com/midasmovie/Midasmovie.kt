@@ -17,8 +17,7 @@ suspend fun MainAPI.loadExtractor(
             source = "Default",
             name = "Default",
             url = url,
-            type = ExtractorLinkType.VIDEO,
-            headers = emptyMap()
+            type = ExtractorLinkType.VIDEO
         )
     )
 }
@@ -52,48 +51,80 @@ class Midasmovie : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page == 1) "$mainUrl/${request.data.replace("page/%d/", "")}" else "$mainUrl/${request.data.format(page)}"
-        val document = app.get(url = url.replace("//", "/").replace(":/", "://"), headers = emptyMap()).document
-        val expectedType = if (request.data.contains("tvshows", ignoreCase = true)) TvType.TvSeries else TvType.Movie
-        val items = document.select("article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite")
-            .mapNotNull { it.toSearchResult(expectedType) }
+        val url = if (page == 1)
+            "$mainUrl/${request.data.replace("page/%d/", "")}"
+        else
+            "$mainUrl/${request.data.format(page)}"
+
+        val document = app.get(url.replace("//", "/").replace(":/", "://")).document
+        val expectedType =
+            if (request.data.contains("tvshows", true)) TvType.TvSeries else TvType.Movie
+
+        val items = document.select(
+            "article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite"
+        ).mapNotNull { it.toSearchResult(expectedType) }
+
         return newHomePageResponse(request.name, items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get(url = "$mainUrl/?s=$query", headers = emptyMap()).document
-        return document.select("article, div.ml-item, div.item, div.movie-item, div.film")
-            .mapNotNull { it.toSearchOnly() }
+        val document = app.get("$mainUrl/?s=$query").document
+        return document.select(
+            "article, div.ml-item, div.item, div.movie-item, div.film"
+        ).mapNotNull { it.toSearchOnly() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url = url, headers = emptyMap()).document
-        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")
-            ?.text()?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
-        val poster = document.selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")
-            ?.fixPoster()?.let { fixUrl(it) }
-        val description = document.selectFirst("div[itemprop=description] > p, .wp-content > p, .entry-content > p, .desc p, .synopsis")?.text()?.trim()
-        val tags = document.select("strong:contains(Genre) ~ a, .sgeneros a, .wp-tags a, .genre a, .genres a").eachText()
-        val year = document.selectFirst("strong:contains(Year) ~ a, .year, .release")?.text()?.trim()?.replace(Regex("\\D"), "")?.toIntOrNull()
-        val rating = document.selectFirst("span[itemprop=ratingValue], .dt_rating_vgs, .rating, .imdb")?.text()?.trim()?.toDoubleOrNull()
+        val document = app.get(url).document
+
+        val title = document.selectFirst(
+            "h1.entry-title, h1, .mvic-desc h3, .title"
+        )?.text()
+            ?.substringBefore("Season")
+            ?.substringBefore("Episode")
+            ?.substringBefore("(")
+            ?.trim().orEmpty()
+
+        val poster = document.selectFirst(
+            ".sheader .poster img, figure.pull-left img, .poster img, " +
+                    ".mvic-thumb img, img.wp-post-image, img"
+        )?.fixPoster()?.let { fixUrl(it) }
+
+        val description = document.selectFirst(
+            "div[itemprop=description] > p, .wp-content > p, " +
+                    ".entry-content > p, .desc p, .synopsis"
+        )?.text()?.trim()
+
+        val tags = document.select(
+            "strong:contains(Genre) ~ a, .sgeneros a, .wp-tags a, .genre a, .genres a"
+        ).eachText()
+
+        val year = document.selectFirst(
+            "strong:contains(Year) ~ a, .year, .release"
+        )?.text()?.replace(Regex("\\D"), "")?.toIntOrNull()
+
+        val rating = document.selectFirst(
+            "span[itemprop=ratingValue], .dt_rating_vgs, .rating, .imdb"
+        )?.text()?.toDoubleOrNull()
+
         val episodes = parseEpisodes(document)
         val tvType = if (episodes.isNotEmpty()) TvType.TvSeries else TvType.Movie
 
         return if (tvType == TvType.TvSeries) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = poster
-                this.plot = description
+                posterUrl = poster
+                plot = description
                 this.tags = tags
                 this.year = year
-                rating?.let { this.score = Score.from10(it) }
+                rating?.let { score = Score.from10(it) }
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster
-                this.plot = description
+                posterUrl = poster
+                plot = description
                 this.tags = tags
                 this.year = year
-                rating?.let { this.score = Score.from10(it) }
+                rating?.let { score = Score.from10(it) }
             }
         }
     }
@@ -104,21 +135,28 @@ class Midasmovie : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(url = data, headers = emptyMap()).document
-        val mediaElements = document.select("div.pframe iframe, .dooplay_player iframe, iframe, video, source")
+        val document = app.get(data).document
+
+        val mediaElements =
+            document.select("div.pframe iframe, .dooplay_player iframe, iframe, video, source")
+
         mediaElements.forEach { element ->
-            val link = when {
-                element.tagName() == "iframe" -> element.getIframeAttr()?.httpsify()
-                element.tagName() == "source" -> element.attr("src").httpsify()
-                element.tagName() == "video" -> element.attr("src").httpsify()
+            val link = when (element.tagName()) {
+                "iframe" -> element.getIframeAttr()?.httpsify()
+                "source" -> element.attr("src").httpsify()
+                "video" -> element.attr("src").httpsify()
                 else -> null
             }
             link?.let { loadExtractor(it, subtitleCallback, callback) }
         }
+
         document.select("track[kind=subtitles]").forEach { track ->
             val subUrl = track.attr("src")?.httpsify()
-            if (!subUrl.isNullOrBlank()) subtitleCallback(SubtitleFile(subUrl))
+            if (!subUrl.isNullOrBlank()) {
+                subtitleCallback(SubtitleFile(subUrl))
+            }
         }
+
         return mediaElements.isNotEmpty()
     }
 
@@ -131,37 +169,55 @@ class Midasmovie : MainAPI() {
 
     private fun Element?.fixPoster(): String? {
         if (this == null) return null
+
         if (this.hasAttr("srcset")) {
-            val srcset = this.attr("srcset").trim()
-            val best = srcset.split(",").map { it.trim().split(" ")[0] }.lastOrNull()
+            val best = this.attr("srcset")
+                .split(",")
+                .map { it.trim().split(" ")[0] }
+                .lastOrNull()
             if (!best.isNullOrBlank()) return best.fixImageQuality()
         }
+
         val dataSrc = when {
             this.hasAttr("data-lazy-src") -> this.attr("data-lazy-src")
             this.hasAttr("data-src") -> this.attr("data-src")
             else -> null
         }
+
         if (!dataSrc.isNullOrBlank()) return dataSrc.fixImageQuality()
         val src = this.attr("src")
         return if (src.isNotBlank()) src.fixImageQuality() else null
     }
 
     private fun String.fixImageQuality(): String {
-        val regex = Regex("-\\d+x\\d+(?=\\.(webp|jpg|jpeg|png))", RegexOption.IGNORE_CASE)
-        return this.replace(regex, "")
+        val regex =
+            Regex("-\\d+x\\d+(?=\\.(webp|jpg|jpeg|png))", RegexOption.IGNORE_CASE)
+        return replace(regex, "")
     }
 
     private fun parseEpisodes(document: org.jsoup.nodes.Document): List<Episode> {
-        val containers = document.select("div.episode-list, div.episodes, ul.episodes, div#episodes, div.eplister, div.seasons")
-        val links = if (containers.isNotEmpty()) containers.select("a[href]") else document.select("a[href*=\"episode\"], a[href*=\"/eps\"], a[href*=\"/ep\"], a.episode")
+        val containers = document.select(
+            "div.episode-list, div.episodes, ul.episodes, div#episodes, div.eplister, div.seasons"
+        )
+
+        val links =
+            if (containers.isNotEmpty())
+                containers.select("a[href]")
+            else
+                document.select("a[href*=\"episode\"], a[href*=\"/eps\"], a[href*=\"/ep\"], a.episode")
+
         return links.mapIndexedNotNull { index, a ->
-            val href = a.attr("href").trim().takeIf { it.isNotBlank() }?.let { fixUrl(it) } ?: return@mapIndexedNotNull null
-            val name = a.text().trim().ifBlank { "Episode ${index + 1}" }
-            val epNum = Regex("E(p|ps)?\\s*(\\d+)", RegexOption.IGNORE_CASE).find(name)?.groupValues?.getOrNull(2)?.toIntOrNull() ?: (index + 1)
+            val href = fixUrl(a.attr("href"))
+            val name = a.text().ifBlank { "Episode ${index + 1}" }
+            val epNum =
+                Regex("E(p|ps)?\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(name)?.groupValues?.getOrNull(2)?.toIntOrNull()
+                    ?: (index + 1)
+
             newEpisode(href) {
                 this.name = name
-                this.season = 1
-                this.episode = epNum
+                season = 1
+                episode = epNum
             }
         }.distinctBy { it.data }
     }
@@ -169,20 +225,36 @@ class Midasmovie : MainAPI() {
     private fun Element.toSearchResult(expectedType: TvType? = null): SearchResponse? {
         val link = selectFirst("a[href]") ?: return null
         val href = fixUrl(link.attr("href"))
-        val title = link.attr("title").removePrefix("Permalink to:").ifBlank { selectFirst("h1, h2, h3, h4, .title, .movie-title, .entry-title")?.text()?.trim().orEmpty() }.trim()
+
+        val title = link.attr("title")
+            .removePrefix("Permalink to:")
+            .ifBlank {
+                selectFirst("h1, h2, h3, h4, .title, .movie-title, .entry-title")
+                    ?.text().orEmpty()
+            }.trim()
+
         if (title.isBlank()) return null
+
         val posterUrl = selectFirst("img")?.fixPoster()?.let { fixUrl(it) }
-        val quality = selectFirst(".quality, .gmr-quality-item, .gmr-qual, .q")?.text()?.trim()?.replace("-", "")?.takeIf { it.isNotBlank() }
+        val quality =
+            selectFirst(".quality, .gmr-quality-item, .gmr-qual, .q")
+                ?.text()?.replace("-", "")
+
         val inferredType = expectedType ?: when {
-            href.contains("/tvshow", ignoreCase = true) -> TvType.TvSeries
-            href.contains("/tvshows", ignoreCase = true) -> TvType.TvSeries
+            href.contains("tvshow", true) -> TvType.TvSeries
             selectFirst(".type-tv, .tv, .series") != null -> TvType.TvSeries
             else -> TvType.Movie
         }
+
         return if (inferredType == TvType.TvSeries) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                posterUrl = posterUrl
+            }
         } else {
-            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = posterUrl; if (!quality.isNullOrBlank()) addQuality(quality) }
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                posterUrl = posterUrl
+                quality?.let { addQuality(it) }
+            }
         }
     }
 
@@ -191,13 +263,25 @@ class Midasmovie : MainAPI() {
         val href = fixUrl(link.attr("href"))
         val title = link.text().trim()
         val poster = selectFirst(".thumbnail a img")?.fixPoster()?.let { fixUrl(it) }
-        val typeText = selectFirst(".thumbnail a span")?.text()?.trim()?.lowercase(Locale.ROOT)
+
+        val typeText =
+            selectFirst(".thumbnail a span")?.text()?.lowercase(Locale.ROOT)
         val isMovie = typeText?.contains("movie") == true
-        val rating = selectFirst(".meta .rating")?.text()?.trim()?.replace("IMDb", "")?.trim()?.toDoubleOrNull()
+
+        val rating =
+            selectFirst(".meta .rating")?.text()
+                ?.replace("IMDb", "")?.trim()?.toDoubleOrNull()
+
         return if (isMovie) {
-            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = poster; if (rating != null) this.score = Score.from10(rating) }
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                posterUrl = poster
+                rating?.let { score = Score.from10(it) }
+            }
         } else {
-            newAnimeSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = poster; if (rating != null) this.score = Score.from10(rating) }
+            newAnimeSearchResponse(title, href, TvType.TvSeries) {
+                posterUrl = poster
+                rating?.let { score = Score.from10(it) }
+            }
         }
     }
 }
