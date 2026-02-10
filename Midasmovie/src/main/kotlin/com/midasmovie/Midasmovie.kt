@@ -2,6 +2,8 @@ package com.midasmovie
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Element
 import java.util.*
 
@@ -13,7 +15,7 @@ suspend fun MainAPI.loadExtractor(
 ) {
     callback(
         newExtractorLink(
-            source = url,
+            source = "Default",
             name = "Default",
             url = url,
             headers = emptyMap()
@@ -30,7 +32,6 @@ class Midasmovie : MainAPI() {
     override var name = "Midasmovie🏵"
     override val hasMainPage = true
     override var lang = "id"
-
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
@@ -51,9 +52,8 @@ class Midasmovie : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page == 1) "$mainUrl/${request.data.replace("page/%d/", "")}"
-                  else "$mainUrl/${request.data.format(page)}"
-        val document = app.get(url.replace("//", "/").replace(":/", "://"), emptyMap()).document
+        val url = if (page == 1) "$mainUrl/${request.data.replace("page/%d/", "")}" else "$mainUrl/${request.data.format(page)}"
+        val document = app.get(url.replace("//", "/").replace(":/", "://"), headers = emptyMap<String, String>()).document
         val expectedType = if (request.data.contains("tvshows", ignoreCase = true)) TvType.TvSeries else TvType.Movie
         val items = document.select("article, div.ml-item, div.item, div.movie-item, div.film, div.item-infinite")
             .mapNotNull { it.toSearchResult(expectedType) }
@@ -61,15 +61,15 @@ class Midasmovie : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query", emptyMap()).document
+        val document = app.get("$mainUrl/?s=$query", headers = emptyMap<String, String>()).document
         return document.select("article, div.ml-item, div.item, div.movie-item, div.film")
             .mapNotNull { it.toSearchOnly() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, emptyMap()).document
-        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")
-            ?.text()?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
+        val document = app.get(url, headers = emptyMap<String, String>()).document
+        val title = document.selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")?.text()
+            ?.substringBefore("Season")?.substringBefore("Episode")?.substringBefore("(")?.trim().orEmpty()
         val poster = document.selectFirst(".sheader .poster img, figure.pull-left img, .poster img, .mvic-thumb img, img.wp-post-image, img")
             ?.fixPoster()?.let { fixUrl(it) }
         val description = document.selectFirst("div[itemprop=description] > p, .wp-content > p, .entry-content > p, .desc p, .synopsis")?.text()?.trim()
@@ -98,13 +98,8 @@ class Midasmovie : MainAPI() {
         }
     }
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        val document = app.get(data, emptyMap()).document
+    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+        val document = app.get(data, headers = emptyMap<String, String>()).document
         val options = document.select("li.dooplay_player_option[data-post][data-nume][data-type]")
         if (options.isNotEmpty()) {
             options.forEach { opt ->
@@ -116,7 +111,7 @@ class Midasmovie : MainAPI() {
                 val response = app.post(
                     "$mainUrl/wp-admin/admin-ajax.php",
                     data = mapOf("action" to "doo_player_ajax", "post" to postId, "nume" to nume, "type" to type),
-                    headers = emptyMap()
+                    headers = emptyMap<String, String>()
                 ).document
 
                 response.select("iframe, video, source").forEach { element ->
@@ -155,7 +150,6 @@ class Midasmovie : MainAPI() {
         return true
     }
 
-    // Helpers
     private fun Element?.getIframeAttr(): String? {
         if (this == null) return null
         return this.attr("data-litespeed-src").takeIf { it.isNotBlank() }
@@ -233,13 +227,5 @@ class Midasmovie : MainAPI() {
         } else {
             newAnimeSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = poster; if (rating != null) this.score = Score.from10(rating) }
         }
-    }
-
-    private fun Element.toRecommendResult(): SearchResponse? {
-        val link = selectFirst("a") ?: return null
-        val href = fixUrl(link.attr("href"))
-        val poster = selectFirst("a img")?.fixPoster()?.let { fixUrl(it) }
-        val title = selectFirst("a img")?.attr("alt")?.trim() ?: return null
-        return newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = poster }
     }
 }
