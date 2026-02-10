@@ -1,6 +1,7 @@
 package com.midasmovie
 
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addScore
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import org.jsoup.nodes.Element
 import java.util.*
@@ -11,7 +12,7 @@ suspend fun MainAPI.loadExtractor(
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ) {
-    callback(newExtractorLink(source = url, name = "Default", url = url))
+    callback(newExtractorLink(source = url, name = "Default", url = url, headers = emptyMap()))
 }
 
 fun String.httpsify(): String {
@@ -50,7 +51,7 @@ class Midasmovie : MainAPI() {
             "$mainUrl/${request.data.format(page)}"
         }.replace("//", "/").replace(":/", "://")
 
-        val document = app.get(url).document
+        val document = app.get(url, emptyMap()).document
         val expectedType =
             if (request.data.contains("tvshows", ignoreCase = true)) TvType.TvSeries else TvType.Movie
 
@@ -62,13 +63,13 @@ class Midasmovie : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
+        val document = app.get("$mainUrl/?s=$query", emptyMap()).document
         return document.select("article, div.ml-item, div.item, div.movie-item, div.film")
             .mapNotNull { it.toSearchOnly() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        val document = app.get(url, emptyMap()).document
 
         val title = document
             .selectFirst("h1.entry-title, h1, .mvic-desc h3, .title")
@@ -112,7 +113,7 @@ class Midasmovie : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.year = year
-                if (!rating.isNullOrBlank()) addScore(rating, 10)
+                if (!rating.isNullOrBlank()) addScore(this, rating, 10)
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -120,7 +121,7 @@ class Midasmovie : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.year = year
-                if (!rating.isNullOrBlank()) addScore(rating, 10)
+                if (!rating.isNullOrBlank()) addScore(this, rating, 10)
             }
         }
     }
@@ -131,7 +132,7 @@ class Midasmovie : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        val document = app.get(data, emptyMap()).document
 
         val options = document.select("li.dooplay_player_option[data-post][data-nume][data-type]")
         if (options.isNotEmpty()) {
@@ -148,7 +149,8 @@ class Midasmovie : MainAPI() {
                         "post" to postId,
                         "nume" to nume,
                         "type" to type
-                    )
+                    ),
+                    headers = emptyMap()
                 ).document
 
                 response.select("iframe, video, source").forEach { element ->
