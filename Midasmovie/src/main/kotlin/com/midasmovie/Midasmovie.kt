@@ -112,19 +112,19 @@ class Midasmovie : MainAPI() {
 
         return if (tvType == TvType.TvSeries) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                posterUrl = poster
-                plot = description
+                this.posterUrl = poster
+                this.plot = description
                 this.tags = tags
                 this.year = year
-                rating?.let { score = Score.from10(it) }
+                rating?.let { this.score = Score.from10(it) }
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
-                posterUrl = poster
-                plot = description
+                this.posterUrl = poster
+                this.plot = description
                 this.tags = tags
                 this.year = year
-                rating?.let { score = Score.from10(it) }
+                rating?.let { this.score = Score.from10(it) }
             }
         }
     }
@@ -153,7 +153,7 @@ class Midasmovie : MainAPI() {
         document.select("track[kind=subtitles]").forEach { track ->
             val subUrl = track.attr("src")?.httpsify()
             if (!subUrl.isNullOrBlank()) {
-                subtitleCallback(SubtitleFile(subUrl))
+                subtitleCallback(SubtitleFile("ID", subUrl))
             }
         }
 
@@ -216,8 +216,8 @@ class Midasmovie : MainAPI() {
 
             newEpisode(href) {
                 this.name = name
-                season = 1
-                episode = epNum
+                this.season = 1
+                this.episode = epNum
             }
         }.distinctBy { it.data }
     }
@@ -248,11 +248,11 @@ class Midasmovie : MainAPI() {
 
         return if (inferredType == TvType.TvSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
-                posterUrl = posterUrl
+                this.posterUrl = posterUrl
             }
         } else {
             newMovieSearchResponse(title, href, TvType.Movie) {
-                posterUrl = posterUrl
+                this.posterUrl = posterUrl
                 quality?.let { addQuality(it) }
             }
         }
@@ -274,13 +274,13 @@ class Midasmovie : MainAPI() {
 
         return if (isMovie) {
             newMovieSearchResponse(title, href, TvType.Movie) {
-                posterUrl = poster
-                rating?.let { score = Score.from10(it) }
+                this.posterUrl = poster
+                rating?.let { this.score = Score.from10(it) }
             }
         } else {
             newAnimeSearchResponse(title, href, TvType.TvSeries) {
-                posterUrl = poster
-                rating?.let { score = Score.from10(it) }
+                this.posterUrl = poster
+                rating?.let { this.score = Score.from10(it) }
             }
         }
     }
