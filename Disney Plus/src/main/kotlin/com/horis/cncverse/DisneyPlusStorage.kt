@@ -3,7 +3,7 @@ package com.horis.cncverse
 import android.content.Context
 import android.content.SharedPreferences
 
-object NetflixMirrorStorage {
+object DisneyPlusStorage {
     private lateinit var context: Context
     private lateinit var prefs: SharedPreferences
 

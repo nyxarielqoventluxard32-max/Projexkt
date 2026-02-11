@@ -9,11 +9,11 @@ android {
 
 cloudstream {
     
-    language = "hi"
+    language = "en"
     // All of these properties are optional, you can safely remove them
 
     description = "Netflix, PrimeVideo, Disney+ Hotstar Contents in Multiple Languages"
-    authors = listOf("Sushan64")
+    authors = listOf("horis")
 
     /**
      * Status int as the following:
@@ -28,5 +28,5 @@ cloudstream {
         "TvSeries"
     )
 
-    iconUrl = "https://raw.githubusercontent.com/Sushan64/NetMirror-Extension/refs/heads/master/Netmirror/logo.jpeg"
+    iconUrl = "https://i.postimg.cc/TYKyC16H/images.png"
 }

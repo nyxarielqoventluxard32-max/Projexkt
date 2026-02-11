@@ -23,11 +23,11 @@ class DisneyPlusProvider : MainAPI() {
     TvType.Movie,
     TvType.TvSeries,
   )
-  override var lang = "hi"
+  override var lang = "en"
 
   override var mainUrl = "https://net22.cc"
   private var newUrl = "https://net52.cc"
-  override var name = "Disney Plus"
+  override var name = "Disney Plus🎂"
 
   override val hasMainPage = true
   private var cookie_value = ""
