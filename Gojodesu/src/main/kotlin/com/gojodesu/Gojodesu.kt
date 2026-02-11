@@ -7,7 +7,6 @@ import org.jsoup.nodes.Element
 import java.util.Base64
 
 class Gojodesu : MainAPI() {
-
     override var mainUrl = "https://gojodesu.com"
     override var name = "Gojodesu🍤"
     override val hasMainPage = true
@@ -67,7 +66,7 @@ class Gojodesu : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = "${request.data}$page/"
+        val url = "$mainUrl/page/$page/"
         val doc = app.get(url).document
         val items = doc.select("div.listupd article.bs, div.listupd div.bsx")
             .distinctBy { it.selectFirst("a")?.attr("href") }
@@ -97,28 +96,22 @@ class Gojodesu : MainAPI() {
             ?: getSlidePoster(doc)
         val description = doc.selectFirst("div.entry-content p, div.desc p, div.synopsis p")?.text()?.trim()
         val isMovie = doc.selectFirst(".spe, .status")?.text()?.contains("Movie", true) == true
-
         val episodeSelectors = listOf(
             "div.eplister ul li",
             "div.episodelist ul li",
             "div#epslist li",
             "div.epbox li"
         )
-
         val episodes = episodeSelectors.flatMap { sel ->
             doc.select(sel).mapNotNull { element ->
                 val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
                 val epNumber = Regex("""\d+""").find(element.text())?.value?.toIntOrNull()
                 if (epNumber == null) return@mapNotNull null
                 val epName = "$title Episode $epNumber"
-                epNumber to newEpisode(href) {
-                    this.name = epName
-                    this.episode = epNumber
-                }
+                epNumber to newEpisode(href) { this.name = epName }
             }
         }.sortedBy { it.first }
             .map { it.second }
-
         return if (isMovie) {
             newMovieLoadResponse(title, url, TvType.Movie, episodes.firstOrNull()?.data ?: url) {
                 this.posterUrl = poster
