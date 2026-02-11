@@ -7,6 +7,7 @@ import org.jsoup.nodes.Element
 import java.util.Base64
 
 class Gojodesu : MainAPI() {
+
     override var mainUrl = "https://gojodesu.com"
     override var name = "Gojodesu🍤"
     override val hasMainPage = true
@@ -66,7 +67,7 @@ class Gojodesu : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = "$mainUrl/page/$page/"
+        val url = "${request.data}$page/"
         val doc = app.get(url).document
         val items = doc.select("div.listupd article.bs, div.listupd div.bsx")
             .distinctBy { it.selectFirst("a")?.attr("href") }
@@ -96,22 +97,28 @@ class Gojodesu : MainAPI() {
             ?: getSlidePoster(doc)
         val description = doc.selectFirst("div.entry-content p, div.desc p, div.synopsis p")?.text()?.trim()
         val isMovie = doc.selectFirst(".spe, .status")?.text()?.contains("Movie", true) == true
+
         val episodeSelectors = listOf(
             "div.eplister ul li",
             "div.episodelist ul li",
             "div#epslist li",
             "div.epbox li"
         )
+
         val episodes = episodeSelectors.flatMap { sel ->
             doc.select(sel).mapNotNull { element ->
                 val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
                 val epNumber = Regex("""\d+""").find(element.text())?.value?.toIntOrNull()
                 if (epNumber == null) return@mapNotNull null
                 val epName = "$title Episode $epNumber"
-                epNumber to newEpisode(href) { this.name = epName }
+                epNumber to newEpisode(href) {
+                    this.name = epName
+                    this.episode = epNumber
+                }
             }
         }.sortedBy { it.first }
             .map { it.second }
+
         return if (isMovie) {
             newMovieLoadResponse(title, url, TvType.Movie, episodes.firstOrNull()?.data ?: url) {
                 this.posterUrl = poster
@@ -139,12 +146,17 @@ class Gojodesu : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+
         val doc = app.get(data).document
         val links = mutableSetOf<String>()
-        doc.select("iframe").forEach { iframe ->
+
+        doc.select("#pembed iframe, iframe").forEach { iframe ->
             val src = iframe.attr("src")
-            if (src.isNotBlank()) links.add(fixUrl(src))
+            if (src.isNotBlank()) {
+                links.add(fixUrl(src))
+            }
         }
+
         doc.select("select.mirror option").forEach { option ->
             val value = option.attr("value")
             if (value.isNotBlank()) {
@@ -155,13 +167,23 @@ class Gojodesu : MainAPI() {
                 links.add(fixUrl(iframeSrc ?: value))
             }
         }
+
         doc.select("a[href]").forEach { a ->
             val href = a.attr("href")
             if (href.contains("download") || href.contains("file/")) {
                 links.add(fixUrl(href))
             }
         }
-        links.distinct().forEach { loadExtractor(it, subtitleCallback, callback) }
+
+        links.distinct().forEach { link ->
+            loadExtractor(
+                link,
+                data,
+                subtitleCallback,
+                callback
+            )
+        }
+
         return links.isNotEmpty()
     }
 }
