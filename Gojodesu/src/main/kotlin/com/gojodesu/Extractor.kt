@@ -17,10 +17,6 @@ class KotakAjaibExtractor : ExtractorApi() {
         val fixedUrl = if (url.startsWith("//")) "https:$url" else url
         val links = mutableListOf<ExtractorLink>()
 
-        val headers = mapOf(
-            "Referer" to (referer ?: mainUrl)
-        )
-
         val doc = app.get(
             fixedUrl,
             referer = referer ?: mainUrl
@@ -31,10 +27,9 @@ class KotakAjaibExtractor : ExtractorApi() {
             if (videoUrl.isNotBlank()) {
                 links.add(
                     newExtractorLink(
-                        source = name,
-                        name = name,
-                        url = videoUrl,
-                        headers = headers
+                        name,
+                        name,
+                        videoUrl
                     )
                 )
             }
@@ -49,10 +44,9 @@ class KotakAjaibExtractor : ExtractorApi() {
                     if (videoUrl.startsWith("http")) {
                         links.add(
                             newExtractorLink(
-                                source = name,
-                                name = name,
-                                url = videoUrl,
-                                headers = headers
+                                name,
+                                name,
+                                videoUrl
                             )
                         )
                     }
